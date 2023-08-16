@@ -1,7 +1,7 @@
 open Ast
 
 module Env = struct
-  type env = Ast.env
+  type t = Ast.env
 
   let empty () = Empty
   let extend id value env = Extend (id, value, env)
