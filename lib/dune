@@ -1,0 +1,8 @@
+(library 
+ (wrapped false)
+ (name eopl))
+
+(menhir
+ (modules parser))
+
+(ocamllex lexer)
