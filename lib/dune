@@ -1,4 +1,4 @@
-(library 
+(library
  (wrapped false)
  (name eopl))
 
