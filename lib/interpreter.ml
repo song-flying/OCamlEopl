@@ -122,3 +122,130 @@ module Iterative = struct
   let value_of_prog = function
     | Program expr -> value_of_expr initial_env expr EndCont
 end
+
+module Imperative = struct
+  type cont =
+    | EndCont
+    | ZeroCont of cont
+    | LetCont of { var : string; body : expr; env : Env.t; inner_cont : cont }
+    | IfCont of {
+        onTrue : expr;
+        onFalse : expr;
+        env : Env.t;
+        inner_cont : cont;
+      }
+    | Op1Cont of { op : char; right : expr; env : Env.t; inner_cont : cont }
+    | Op2Cont of { op : char; left : value; inner_cont : cont }
+    | RatorCont of { rand : expr; env : Env.t; inner_cont : cont }
+    | RandCont of { proc : closure; inner_cont : cont }
+
+  let expr_reg = ref (Int 0)
+  let env_reg = ref (Env.empty ())
+  let cont_reg = ref EndCont
+  let value_reg = ref (IntV 0)
+
+  let rec value_of_expr () =
+    match !expr_reg with
+    | Int n ->
+        value_reg := IntV n;
+        apply ()
+    | Bool b ->
+        value_reg := BoolV b;
+        apply ()
+    | Var id ->
+        value_reg := Env.apply !env_reg id;
+        apply ()
+    | IsZero e ->
+        cont_reg := ZeroCont !cont_reg;
+        expr_reg := e;
+        value_of_expr ()
+    | Op { op; left; right } ->
+        cont_reg :=
+          Op1Cont { op; right; env = !env_reg; inner_cont = !cont_reg };
+        expr_reg := left;
+        value_of_expr ()
+    | If { cond; onTrue; onFalse } ->
+        cont_reg :=
+          IfCont { onTrue; onFalse; env = !env_reg; inner_cont = !cont_reg };
+        expr_reg := cond;
+        value_of_expr ()
+    | Let { var; exp; body } ->
+        cont_reg :=
+          LetCont { var; body; env = !env_reg; inner_cont = !cont_reg };
+        expr_reg := exp;
+        value_of_expr ()
+    | LetRec { pname; pvar; pbody; body } ->
+        expr_reg := body;
+        env_reg := Env.extend_rec pname pvar pbody !env_reg;
+        value_of_expr ()
+    | Fun { var; body } ->
+        value_reg := ClosV { var; body; env = !env_reg };
+        apply ()
+    | App { rator; rand } ->
+        cont_reg := RatorCont { rand; env = !env_reg; inner_cont = !cont_reg };
+        expr_reg := rator;
+        value_of_expr ()
+
+  and apply () =
+    match !cont_reg with
+    | EndCont -> !value_reg
+    | ZeroCont inner_cont -> (
+        match !value_reg with
+        | IntV i ->
+            cont_reg := inner_cont;
+            value_reg := BoolV (i = 0);
+            apply ()
+        | _ -> failwith "IsZero: input has non integer type")
+    | LetCont { var; body; env; inner_cont } ->
+        cont_reg := inner_cont;
+        expr_reg := body;
+        env_reg := Env.extend var !value_reg env;
+        value_of_expr ()
+    | IfCont { onTrue; onFalse; env; inner_cont } -> (
+        match !value_reg with
+        | BoolV b -> (
+            cont_reg := inner_cont;
+            env_reg := env;
+            match b with
+            | true ->
+                expr_reg := onTrue;
+                value_of_expr ()
+            | false ->
+                expr_reg := onFalse;
+                value_of_expr ())
+        | _ -> failwith "If: condition has non boolean type")
+    | Op1Cont { op; right; env; inner_cont } ->
+        cont_reg := Op2Cont { op; left = !value_reg; inner_cont };
+        expr_reg := right;
+        env_reg := env;
+        value_of_expr ()
+    | Op2Cont { op; left; inner_cont } -> (
+        match (left, !value_reg) with
+        | IntV i1, IntV i2 ->
+            cont_reg := inner_cont;
+            value_reg := apply_op op i1 i2;
+            apply ()
+        | _ -> failwith "Op: input has non integer type")
+    | RatorCont { rand; env; inner_cont } -> (
+        match !value_reg with
+        | ClosV proc ->
+            cont_reg := RandCont { proc; inner_cont };
+            expr_reg := rand;
+            env_reg := env;
+            value_of_expr ()
+        | _ -> failwith "App: operator has non closure type")
+    | RandCont { proc; inner_cont } ->
+        cont_reg := inner_cont;
+        expr_reg := proc.body;
+        env_reg := Env.extend proc.var !value_reg proc.env;
+        value_of_expr ()
+
+  let initial_env = Env.empty ()
+
+  let value_of_prog = function
+    | Program expr ->
+        cont_reg := EndCont;
+        expr_reg := expr;
+        env_reg := initial_env;
+        value_of_expr ()
+end

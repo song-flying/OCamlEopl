@@ -1,5 +1,6 @@
 open Ast
-let value_of_prog = Interpreter.Iterative.value_of_prog
+
+let value_of_prog = Interpreter.Imperative.value_of_prog
 
 let parse (s : string) : prog =
   let lexbuf = Lexing.from_string s in
