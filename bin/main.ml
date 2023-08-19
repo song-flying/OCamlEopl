@@ -14,6 +14,7 @@ let run input =
     | IntV i -> string_of_int i
     | BoolV b -> string_of_bool b
     | ClosV _ -> "__closure__"
+    | ContV _ -> "__continuation__"
   in
   print_newline ();
   Printf.printf "%s\n=> %s\n" input output
@@ -49,9 +50,11 @@ let _p4 =
    in let times4 = (makerec maketimes4)\n\
    in (times4 3)\n"
 
-let program =
+let _p5 =
   "\n\
    letrec double(x) = if zero?(x) then 0 else -((double -(x,1)), -2)\n\
    in (double 6)\n"
+
+let program = "\n+(+(10, letcc k in 2), (letcc k in +(1, throw 2 to k)))\n"
 
 let _ = run program

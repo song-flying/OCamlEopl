@@ -27,6 +27,9 @@ rule read =
   | ">"      { GREATER }
   | "<"      { LESS }
   | "proc"   { PROC }
+  | "letcc"  { LETCC }
+  | "throw"  { THROW }
+  | "to"     { TO }
   | id       { ID (Lexing.lexeme lexbuf) }
   | int      { INT (int_of_string (Lexing.lexeme lexbuf)) }
   | eof      { EOF }

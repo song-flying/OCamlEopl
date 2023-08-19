@@ -47,27 +47,14 @@ module Recursive = struct
             let v = value_of_expr env rand in
             value_of_expr (Env.extend proc.var v proc.env) proc.body
         | _ -> failwith "App: operator has non closure type")
+    | LetCC _ -> failwith "letcc not supported"
+    | Throw _ -> failwith "throw not supported"
 
   let initial_env = Env.empty ()
   let value_of_prog = function Program expr -> value_of_expr initial_env expr
 end
 
 module Iterative = struct
-  type cont =
-    | EndCont
-    | ZeroCont of cont
-    | LetCont of { var : string; body : expr; env : Env.t; inner_cont : cont }
-    | IfCont of {
-        onTrue : expr;
-        onFalse : expr;
-        env : Env.t;
-        inner_cont : cont;
-      }
-    | Op1Cont of { op : char; right : expr; env : Env.t; inner_cont : cont }
-    | Op2Cont of { op : char; left : value; inner_cont : cont }
-    | RatorCont of { rand : expr; env : Env.t; inner_cont : cont }
-    | RandCont of { proc : closure; inner_cont : cont }
-
   let rec value_of_expr : env -> expr -> cont -> value =
    fun env expr cont ->
     match expr with
@@ -87,6 +74,9 @@ module Iterative = struct
     | Fun { var; body } -> apply cont (ClosV { var; body; env })
     | App { rator; rand } ->
         value_of_expr env rator (RatorCont { rand; env; inner_cont = cont })
+    | LetCC { var; body } ->
+        value_of_expr (Env.extend var (ContV cont) env) body cont
+    | Throw { rand; rator } -> value_of_expr env rator (ThrowCont { rand; env })
 
   and apply cont value =
     match cont with
@@ -116,6 +106,10 @@ module Iterative = struct
         | _ -> failwith "App: operator has non closure type")
     | RandCont { proc; inner_cont } ->
         value_of_expr (Env.extend proc.var value proc.env) proc.body inner_cont
+    | ThrowCont { rand; env } -> (
+        match value with
+        | ContV saved_cont -> value_of_expr env rand saved_cont
+        | _ -> failwith "Throw: target is not continuation")
 
   let initial_env = Env.empty ()
 
@@ -124,21 +118,6 @@ module Iterative = struct
 end
 
 module Imperative = struct
-  type cont =
-    | EndCont
-    | ZeroCont of cont
-    | LetCont of { var : string; body : expr; env : Env.t; inner_cont : cont }
-    | IfCont of {
-        onTrue : expr;
-        onFalse : expr;
-        env : Env.t;
-        inner_cont : cont;
-      }
-    | Op1Cont of { op : char; right : expr; env : Env.t; inner_cont : cont }
-    | Op2Cont of { op : char; left : value; inner_cont : cont }
-    | RatorCont of { rand : expr; env : Env.t; inner_cont : cont }
-    | RandCont of { proc : closure; inner_cont : cont }
-
   let expr_reg = ref (Int 0)
   let env_reg = ref (Env.empty ())
   let cont_reg = ref EndCont
@@ -183,6 +162,14 @@ module Imperative = struct
         apply ()
     | App { rator; rand } ->
         cont_reg := RatorCont { rand; env = !env_reg; inner_cont = !cont_reg };
+        expr_reg := rator;
+        value_of_expr ()
+    | LetCC { var; body } ->
+        expr_reg := body;
+        env_reg := Env.extend var (ContV !cont_reg) !env_reg;
+        value_of_expr ()
+    | Throw { rand; rator } ->
+        cont_reg := ThrowCont { rand; env = !env_reg };
         expr_reg := rator;
         value_of_expr ()
 
@@ -239,6 +226,14 @@ module Imperative = struct
         expr_reg := proc.body;
         env_reg := Env.extend proc.var !value_reg proc.env;
         value_of_expr ()
+    | ThrowCont { rand; env } -> (
+        match !value_reg with
+        | ContV saved_cont ->
+            cont_reg := saved_cont;
+            expr_reg := rand;
+            env_reg := env;
+            value_of_expr ()
+        | _ -> failwith "Throw: target is not continuation")
 
   let initial_env = Env.empty ()
 
